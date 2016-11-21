@@ -12,6 +12,9 @@ Here's what each directory is:
 /seq/libpng.cpp
     -We had a lot of trouble figuring out which library was appropriate to convert an image into readable RGB values in C++ code. We started with OpenCV to read JPEG, but for the sake of time we eventually experimented with a library known as libpng to read PNG files. When we get more time, we'll switch back to OpenCV so that we can try our implementation with live video.
 
+/seq/libpng.cpp
+    -We had a lot of trouble figuring out which library was appropriate to convert an image into readable RGB values in C++ code. We started with OpenCV to read JPEG, but for the sake of time we eventually experimented with a library known as libpng to read PNG files. When we get more time, we'll switch back to OpenCV so that we can try our implementation with live video.
+
 /seq/seq.cpp
     - Our main seq implementation. Again, just a proof of concept.
 
