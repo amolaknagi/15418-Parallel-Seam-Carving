@@ -11,7 +11,7 @@
 #define RINDEX(row, col, width) ((width * (row) * 3) + (3 * (col)) + 2)
 #define GINDEX(row, col, width) ((width * (row) * 3) + (3 * (col)) + 1)
 #define BINDEX(row, col, width) ((width * (row) * 3) + (3 * (col)) + 0)
-#define INDEX(row, col, width)  ((width * (row)) + col)
+#define INDEX(row, col, width)  ((width * (row)) + (col))
 
 #define SEAM_COUNT 500
 
@@ -19,7 +19,7 @@
 using namespace cv;
 using namespace std;
 
-double min(long double d1, long double d2, long double d3) {
+double min(double d1, double d2, double d3) {
      double max = d3;
      if (d2 < max) {
           max = d2;
@@ -37,34 +37,7 @@ bool contains(int *seamStartCols, int col) {
      return false;
 }
 
-int main( int argc, const char** argv )
-{
-     Mat img = imread("MyPic.JPG", CV_LOAD_IMAGE_UNCHANGED); //read the image data in the file "MyPic.JPG" and store it in 'img'
-
-
-     int rows = img.rows;
-     int cols = img.cols;
-     int originalCols = cols;
-     printf("Image width: %d\n", cols);
-     printf("Image height: %d\n", rows);
-     printf("Image step: %d\n", (int)img.step);
-
-     long double *energy = (long double*)calloc(rows * cols, sizeof(long double));
-     int *seamStartCols = (int*)calloc(SEAM_COUNT, sizeof(int));
-     for (int i = 0; i < SEAM_COUNT; i++) {
-          seamStartCols[i] = -1;
-     }
-
-
-     // This is the data of all the pixels in the array.
-     // Each pixel has 3 bytes, b, g, r, in consecutive order.
-     // So the size of this input is 3 * width * height.
-     unsigned char *input = (unsigned char*)(img.data);
-
-     // Let's try our energy function. For simplicity sake, let's just
-     // disregard the border pixels.
-     // unsigned char *output = (unsigned char*)calloc(3 * rows * cols, sizeof(unsigned char));
-     
+void calculateEnergy(unsigned char *input, double *energy, int cols, int rows) {
      for (int row = 0; row < rows; row++) {
           for (int col = 0; col < cols; col++) {
 
@@ -105,109 +78,179 @@ int main( int argc, const char** argv )
                // The maximum delta is 3 * (255 + 255)
                // which is 1530
                int delta = rDelta + gDelta + bDelta;
-               long double energyValue = (((long double)delta) / ((long double)1530));
+               double energyValue = (((double)delta) / ((double)1530));
                energy[INDEX(row, col, cols)] = energyValue;
           }
      }
+}
 
+void calculateACM(double *acm, int cols, int rows) {
+     for (int row = 2; row < rows; row++) {
+          for (int col = 1; col < cols - 1; col++) {
+
+               // If we're in the leftmost column, disregard upLeft
+               double upLeft;
+               if (col == 1) {
+                    upLeft = DBL_MAX;
+               } else {
+                    upLeft = acm[INDEX(row-1, col-1, cols)];
+               }
+
+               // Get the value right above
+               double up = acm[INDEX(row-1, col, cols)];
+
+
+               // If we're in the rightmost column, disregard upright
+               double upRight;// = acm[INDEX(row-1, col+1, width)];
+               if (col == (cols - 2)) {
+                    upRight = DBL_MAX;
+               } else {
+                    upRight = acm[INDEX(row-1, col+1, cols)];
+               }
+
+               acm[INDEX(row, col, cols)] = acm[INDEX(row, col, cols)] + min(upLeft, up, upRight);
+          }
+     }
+}
+
+void generateSeam(double *acm, bool *seam, int cols, int rows) {
+
+     // Now let's iterate through last row, find smallest acm value
+     double smallestVal = -1;
+     double smallestCol = -1;
+     for (int col = 1; col < cols - 1; col++) {
+          double thisVal = acm[INDEX(rows-1, col, cols)];
+          if (thisVal < smallestVal || smallestCol == -1) {
+               smallestCol = col;
+               smallestVal = thisVal;
+          }
+     }
+
+     int upwardCol = smallestCol;
+
+     // Start in the bottom row, iterate upwards
+     for (int row = rows - 1; row >= 0; row--) {
+
+          // Set the boolean value for this column in this row to be true
+          seam[INDEX(row, upwardCol, cols)] = true;
+
+          // Don't keep looking upward if in the top row
+          if (row == 0) {
+               continue;
+          }
+
+          double upLeft;
+          if (upwardCol == 1) {
+               upLeft = DBL_MAX;
+          } else {
+               upLeft = acm[INDEX(row-1, upwardCol-1, cols)];
+          }
+
+          double up = acm[INDEX(row-1, upwardCol, cols)];
+
+          double upRight;
+          if (upwardCol == (cols - 2)) {
+               upRight = DBL_MAX;
+          } else {
+               upRight = acm[INDEX(row-1, upwardCol+1, cols)];
+          }
+
+          double smallest = min(upLeft, up, upRight);
+
+          if (smallest == upLeft) {
+               upwardCol--;
+          } else if (smallest == upRight) {
+               upwardCol++;
+          }
+     }
+}
+
+
+
+int main( int argc, const char** argv )
+{
+     Mat img = imread("MyPic.JPG", CV_LOAD_IMAGE_UNCHANGED); //read the image data in the file "MyPic.JPG" and store it in 'img'
+
+
+     int rows = img.rows;
+     int cols = img.cols;
+     int originalCols = cols;
+     printf("Image width: %d\n", cols);
+     printf("Image height: %d\n", rows);
+     printf("Image step: %d\n", (int)img.step);
+
+     // long double *energy = (long double*)calloc(rows * cols, sizeof(long double));
+     int *seamStartCols = (int*)calloc(SEAM_COUNT, sizeof(int));
+     for (int i = 0; i < SEAM_COUNT; i++) {
+          seamStartCols[i] = -1;
+     }
+
+
+     // This is the data of all the pixels in the array.
+     // Each pixel has 3 bytes, b, g, r, in consecutive order.
+     // So the size of this input is 3 * width * height.
+     unsigned char *input = (unsigned char*)(img.data);
+
+     // Let's try our energy function. For simplicity sake, let's just
+     // disregard the border pixels.
+     // unsigned char *output = (unsigned char*)calloc(3 * rows * cols, sizeof(unsigned char));
+     
 
      // Create our accumulated cost matrix. Make it a copy of our energy matrix
      // except for borders which will have max energy
-     long double *acm;
+     double *acm;
      // Allocate a mask for a seam
-     bool *seam = (bool*)calloc(rows * cols, sizeof(bool));
+
+     double *energy;
 
      // The energy array will always keep the same dimensions of the original image
 
+
+
      // Generate SEAM_COUNT seams
      for (int s = 0; s < SEAM_COUNT; s++) {
+          printf("seam:%d\n", s);
+          // First, with our current width, calculate the energy of this image.
+          energy = (double *)malloc(rows * cols * sizeof(double));
+          calculateEnergy(input, energy, cols, rows);
 
-          // First, let's clear up our acm matrix
-          acm = (long double*)calloc(rows * cols, sizeof(long double));
+          // Now, let's calculate our acm matrix.
+          calculateACM(energy, cols, rows);
+
+          // With our ACM, let's calculate a boolean matrix of our seam
+          // The true values indicate a seam.
+          bool *seam = (bool*)calloc(rows * cols, sizeof(bool));
+          generateSeam(energy, seam, cols, rows);
+
+          // Now that we have this seam, we should remove it from our image
+          // Let's create a new image and update our input
+          unsigned char *newImage = (unsigned char*)calloc(3 * rows * (cols - 1), sizeof(unsigned char));
           for (int row = 0; row < rows; row++) {
+               bool passedSeam = false;
                for (int col = 0; col < cols; col++) {
-                    int index = INDEX(row,col,cols);
-                    if (row == 0 || row == rows - 1 || col == 0 || col == cols - 1) {
-                         acm[index] = 1;
+                    // If this index is a seam, mark it as passed
+                    if (seam[INDEX(row, col, cols)] == true) {
+                         passedSeam = true;
+                    // If not...
                     } else {
-                         acm[index] = energy[INDEX(row,col,originalCols)];
+                         if (!passedSeam) {
+                              newImage[RINDEX(row, col, (cols-1))] = input[RINDEX(row, col, cols)];
+                              newImage[GINDEX(row, col, (cols-1))] = input[GINDEX(row, col, cols)];
+                              newImage[BINDEX(row, col, (cols-1))] = input[BINDEX(row, col, cols)];
+                         } else {
+                              newImage[RINDEX(row, (col-1), (cols-1))] = input[RINDEX(row, col, cols)];
+                              newImage[GINDEX(row, (col-1), (cols-1))] = input[GINDEX(row, col, cols)];
+                              newImage[BINDEX(row, (col-1), (cols-1))] = input[BINDEX(row, col, cols)];
+                         }
                     }
                }
           }
 
-          // Let's also reset our seam matrix
-          for (int i = 0; i < rows * cols; i++) {
-               seam[i] = false;
-          }
-
-
-          // Now let's generate our acm matrix
-          for (int row = 2; row < rows; row++) {
-               for (int col = 2; col < cols - 1; col++) {
-                    long double upLeft = acm[INDEX(row-1, col-1, cols)];
-                    long double up     = acm[INDEX(row-1, col,   cols)];
-                    long double upRight= acm[INDEX(row-1, col+1, cols)];
-
-                    acm[INDEX(row,col,cols)] = acm[INDEX(row,col,cols)] + min(upLeft,up,upRight);
-                    // printf("value:%Lf\n", acm[INDEX(row,col,cols)]);
-               }
-          }
-
-
-
-          // Find the smallest element in the last row
-          long double smallestVal = -1;
-          int smallestCol = -1;
-          for (int col = 2; col < cols - 2; col++) {
-               // long double thisVal = acm[INDEX(rows-2, col, cols)];
-               long double thisVal = acm[INDEX(2, col, cols)];
-               if (thisVal < smallestVal || smallestCol == -1) {
-                    smallestVal = thisVal;
-                    smallestCol = col;
-               }
-          }
-          printf("seam:%d smallest:%d\n", s, smallestCol);
-
-
-          // Iterate upwards to generate this seam
-          // for (int row = rows - 2; row >= 0; row--) {
-          for (int row = 1; row < rows; row++) {
-               seam[INDEX(row, smallestCol, cols)] = true;
-               if (row == 0) {
-                    continue;
-               }
-               long double upLeft = acm[INDEX(row-1, smallestCol-1, cols)];
-               long double up     = acm[INDEX(row-1, smallestCol,   cols)];
-               long double upRight= acm[INDEX(row-1, smallestCol+1, cols)];
-
-               long double smallest = min(upLeft, up, upRight);
-               if (smallest == upLeft) {
-                    smallestCol--;
-               } else if (smallest == upRight) {
-                    smallestCol++;
-               }
-               // printf("smallest:%d\n", smallestCol);
-          }
-
-          // Shrink our image width by 1 pixel
-          for (int row = 0; row < rows; row++) {
-               bool passedTrue = false;
-               for (int col = 0; col < cols - 1; col++) {
-                    bool isSeam = seam[INDEX(row, col, cols)];
-                    if (isSeam) {
-                         passedTrue = true;
-                    }
-
-                    if (passedTrue && col < cols-1) {
-                         energy[INDEX(row,col,originalCols)] = energy[INDEX(row,col+1,originalCols)];
-                    }
-
-                    if (col == cols - 1) {
-                         energy[INDEX(row,col,originalCols)] = 2;
-                    }
-               }
-          }
-
+          free(energy);
+          if (s != 0)
+               free(input);
+          free(seam);
+          input = newImage;
           cols--;
      }
      
@@ -215,20 +258,21 @@ int main( int argc, const char** argv )
 
 
 
+     img.cols = cols;
+     img.data = input;
 
 
 
+     // // Draw energy to our image output
+     // for (int row = 0; row < rows; row++) {
+     //      for (int col = 0; col < cols; col++) {
+     //           int newRVal = energy[INDEX(row, col, originalCols)] * ((long double)255);
 
-     // Draw energy to our image output
-     for (int row = 0; row < rows; row++) {
-          for (int col = 0; col < cols; col++) {
-               int newRVal = energy[INDEX(row, col, originalCols)] * ((long double)255);
-
-               input[RINDEX(row, col, originalCols)] = newRVal;
-               input[GINDEX(row, col, originalCols)] = newRVal;
-               input[BINDEX(row, col, originalCols)] = newRVal;
-          }
-     }
+     //           input[RINDEX(row, col, originalCols)] = newRVal;
+     //           input[GINDEX(row, col, originalCols)] = newRVal;
+     //           input[BINDEX(row, col, originalCols)] = newRVal;
+     //      }
+     // }
 
 
 
