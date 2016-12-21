@@ -1,0 +1,16 @@
+Energy Time: 29.676319.
+ACM Time: 7.811740.
+Generate Time: 0.862990.
+Remove Time: 42.803314.
+Number of threads: 16
+Input file: image_rgb.txt
+Width: 1920, Height: 1080, i: 2073600
+Initialization Time: 0.335833.
+Computation Time: 81.835288.
+
+ Performance counter stats for './wireroute -f image_rgb.txt -n 16':
+
+            364138      cache-misses                                                
+
+      83.681834231 seconds time elapsed
+
